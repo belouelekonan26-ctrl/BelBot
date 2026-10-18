@@ -1,41 +1,47 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
-const pino = require('pino')
-const express = require('express')
-const app = express()
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Boom } = require('@hapi/boom');
+const P = require('pino');
+const express = require('express');
+const app = express();
 
-app.get('/', (req,res)=>res.send('BelBot est en ligne!'))
-app.listen(3000, ()=>console.log('Serveur OK'))
+app.get('/', (req, res) => res.send('BelBot is Running! 🔥'));
+app.listen(process.env.PORT || 3000, () => console.log('Server up'));
 
-async function startBot(){
-  const { state, saveCreds } = await useMultiFileAuthState('session')
-  const sock = makeWASocket({
-    logger: pino({level:'silent'}),
-    printQRInTerminal: true,
-    auth: state
-  })
-  sock.ev.on('creds.update', saveCreds)
-  sock.ev.on('connection.update', async (update)=>{
-    const { connection, lastDisconnect } = update
-    if(connection === 'close'){
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-      if(shouldReconnect) startBot()
-    }
-  })
-  sock.ev.on('messages.upsert', async ({messages})=>{
-    const m = messages[0]
-    if(!m.message || m.key.fromMe) return
-    const text = m.message.conversation || m.message.extendedTextMessage?.text || ''
-    const from = m.key.remoteJid
-    
-    if(text.toLowerCase() === 'ping'){
-      await sock.sendMessage(from, {text:'Pong! BelBot actif ✅'})
-    }
-    if(text.toLowerCase().startsWith('menu')){
-      await sock.sendMessage(from, {text:'🤖 BELBOT MENU\n\n.ping - teste le bot\n.menu - affiche ce menu\n.sticker - envoie image avec .sticker pour faire sticker'})
-    }
-    if(text.toLowerCase() === '.sticker' || text.toLowerCase() === 'sticker'){
-      await sock.sendMessage(from, {text:'Envoie une image avec la légende .sticker'})
-    }
-  })
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth');
+    const sock = makeWASocket({
+        auth: state,
+        logger: P({ level: 'silent' }),
+        printQRInTerminal: true
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect?.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Connexion fermée, reconnexion...', shouldReconnect);
+            if (shouldReconnect) startBot();
+        } else if (connection === 'open') {
+            console.log('✅ BelBot connecté avec succès !');
+        }
+    });
+
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+        
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        const from = msg.key.remoteJid;
+
+        if (text.toLowerCase() === 'ping') {
+            await sock.sendMessage(from, { text: 'Pong! 🏓 BelBot est en ligne !' });
+        }
+        if (text.toLowerCase() === 'salut') {
+            await sock.sendMessage(from, { text: 'Salut Boss Bel ! 👑 Ton bot est actif !' });
+        }
+    });
 }
-startBot()
+
+startBot();
